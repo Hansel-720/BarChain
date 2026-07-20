@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BarChain">
+  <title>BarChain - 專業節拍器</title>
+  <style>
+    body { font-family: sans-serif; background: #121212; color: #fff; margin: 0; padding: 0; user-select: none; }
+    .top-console { background: #1e1e1e; padding: 15px 20px; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+    .controls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .controls-row input, .controls-row select { background: #333; color: white; border: 1px solid #555; padding: 6px; border-radius: 4px; }
+    .btn { padding: 10px 20px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+    .btn-play { background: #4CAF50; color: white; }
+    .btn-stop { background: #f44336; color: white; }
+    
+    .status-bar { font-size: 18px; margin-bottom: 10px; color: #aaa; font-weight: bold; }
+    .status-countin { color: #00bcd4; }
+    
+    .led-container { display: flex; gap: 8px; height: 30px; align-items: center; }
+    .led { width: 18px; height: 18px; border-radius: 50%; background: #333; transition: background 0.05s; }
+    .led.active-first { background: #00bcd4; box-shadow: 0 0 10px #00bcd4; } 
+    .led.active-accent { background: #ff5252; box-shadow: 0 0 10px #ff5252; } 
+    .led.active-sub { background: #4caf50; box-shadow: 0 0 10px #4caf50; }    
+    .led.active-upbeat { background: #ff9800; box-shadow: 0 0 10px #ff9800; } 
+
+    .card-list { padding: 20px; max-width: 600px; margin: 0 auto; padding-bottom: 100px; }
+    .section-card { background: #222; border-left: 5px solid #555; padding: 15px; margin-bottom: 15px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 15px; transition: 0.3s; }
+    .section-card.active-card { border-left-color: #4CAF50; background: #2a3b2a; }
+    .card-number { font-size: 32px; font-weight: bold; color: #555; width: 40px; text-align: center; }
+    
+    .card-inputs { flex-grow: 1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .card-inputs input, .card-inputs select { background: #111; color: white; border: 1px solid #444; padding: 6px; border-radius: 4px; }
+    .ts-btn { background: #333; color: #00bcd4; border: 1px solid #00bcd4; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; }
+    
+    .card-actions { display: flex; gap: 5px; flex-shrink: 0; flex-wrap: nowrap; }
+    .card-actions button { background: #444; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+    .card-actions .mute-btn.is-muted { background: #ff9800; color: #111; }
+    
+    .add-btn { width: 100%; padding: 15px; font-size: 16px; background: #333; color: white; border: 2px dashed #555; border-radius: 8px; cursor: pointer; }
+    .add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 999; }
+    .picker-container { background: #222; border-radius: 12px; padding: 20px; width: 200px; text-align: center; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+    .picker-wheels { display: flex; justify-content: space-between; height: 150px; position: relative; overflow: hidden; }
+    .picker-col { flex: 1; height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; }
+    .picker-col::-webkit-scrollbar { display: none; }
+    .picker-item { height: 50px; display: flex; justify-content: center; align-items: center; font-size: 24px; scroll-snap-align: center; color: #aaa; transition: 0.2s; }
+    .picker-item.selected { color: #fff; font-weight: bold; font-size: 28px; }
+    .picker-highlight { position: absolute; top: 50px; left: 0; width: 100%; height: 50px; border-top: 1px solid #4CAF50; border-bottom: 1px solid #4CAF50; pointer-events: none; }
+    .helper-text { font-size: 12px; color: #888; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <div class="top-console">
+    <div class="controls-row">
+      <button id="btn-play" class="btn btn-play">▶ Play</button>
+      <button id="btn-stop" class="btn btn-stop" style="display:none;">⏹ Stop</button>
+      
+      <label>BPM: <input type="number" id="g-bpm" style="width:60px;"></label>
+      <label>基準: <select id="g-note"><option value="2">二分</option><option value="4">四分</option><option value="8">八分</option></select></label>
+      <label><input type="checkbox" id="g-sub"> 次重/反拍</label>
+      <label>預備拍: <select id="g-countin"><option value="0">無</option><option value="1" selected>1 小節</option><option value="2">2 小節</option></select></label>
+      <label>漸進訓練: 
+        <select id="g-trainer">
+          <option value="-5">-5 BPM</option><option value="-4">-4 BPM</option><option value="-3">-3 BPM</option><option value="-2">-2 BPM</option><option value="-1">-1 BPM</option>
+          <option value="0" selected>Off</option>
+          <option value="1">+1 BPM</option><option value="2">+2 BPM</option><option value="3">+3 BPM</option><option value="4">+4 BPM</option><option value="5">+5 BPM</option>
+        </select>
+      </label>
+    </div>
+    <div class="status-bar" id="status-text">Now: - | BARS: 0 / 0</div>
+    <div class="led-container" id="led-array"></div>
+  </div>
+
+  <div class="card-list" id="card-list"></div>
+  <div style="max-width: 600px; margin: 0 auto; padding: 0 20px;">
+    <button id="btn-add" class="add-btn">+ 新增段落</button>
+  </div>
+
+  <div class="modal-overlay" id="ts-modal" onclick="closePicker()">
+    <div class="picker-container" onclick="event.stopPropagation()">
+      <div class="helper-text">滑動選擇拍號，點擊外部儲存</div>
+      <div class="picker-wheels">
+        <div class="picker-col" id="col-num" onscroll="updatePickerStyle('col-num')">
+          <div class="picker-item"></div>
+        </div>
+        <div class="picker-col" id="col-den" onscroll="updatePickerStyle('col-den')">
+          <div class="picker-item"></div>
+        </div>
+        <div class="picker-highlight"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const defaultGlobal = { bpm: 120, noteValue: 4, subAccent: true, countIn: 1, trainer: 0 };
+const defaultSections = [{ id: 's1', bars: 4, beatsPerBar: 4, beatUnit: 4, isMuted: false, mode: 'absolute', forceLoop: 4 }];
+
+let global = { ...defaultGlobal };
+let sections = [ ...defaultSections ];
+
+function loadData() {
+  const saved = localStorage.getItem('metroClickData');
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if(parsed.global) global = { ...defaultGlobal, ...parsed.global };
+    if(parsed.sections) sections = parsed.sections;
+  }
+  document.getElementById('g-bpm').value = global.bpm;
+  document.getElementById('g-note').value = global.noteValue;
+  document.getElementById('g-sub').checked = global.subAccent;
+  document.getElementById('g-countin').value = global.countIn;
+  document.getElementById('g-trainer').value = global.trainer;
+}
+
+function saveData() { localStorage.setItem('metroClickData', JSON.stringify({ global, sections })); }
+
+let wakeLock = null;
+async function requestWakeLock() { try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {} }
+function releaseWakeLock() { if (wakeLock !== null) { wakeLock.release(); wakeLock = null; } }
+
+function getTotalBars() { return sections.reduce((sum, s) => sum + s.bars, 0); }
+
+function enforceLimit() {
+  let total = getTotalBars();
+  if (total > 32) {
+    let excess = total - 32;
+    for (let i = sections.length - 1; i >= 0 && excess > 0; i--) {
+      let reduce = Math.min(sections[i].bars, excess);
+      sections[i].bars -= reduce;
+      excess -= reduce;
+    }
+    sections = sections.filter(s => s.bars > 0);
+  }
+}
+
+function duplicateSection(index) {
+  let target = JSON.parse(JSON.stringify(sections[index]));
+  target.id = 's' + Date.now();
+  sections.splice(index + 1, 0, target);
+  enforceLimit(); lastDrawnSec = -1; renderUI(); saveData();
+}
+
+function toggleMute(index) {
+  sections[index].isMuted = !sections[index].isMuted;
+  const btn = document.getElementById(`mute-btn-${index}`);
+  btn.innerText = sections[index].isMuted ? '🔇' : '🔊';
+  btn.classList.toggle('is-muted', sections[index].isMuted);
+  saveData();
+}
+
+const workerCode = `
+  let timer = null;
+  self.onmessage = (e) => {
+    if (e.data === 'start') timer = setInterval(() => postMessage('tick'), 25);
+    else if (e.data === 'stop') clearInterval(timer);
+  };
+`;
+const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+let audioCtx = null, worker = null, isPlaying = false, nextNoteTime = 0;
+let cSecIdx = 0, cBar = 0, cTick = 0;
+let isCountInPhase = false;
+let uiQueue = [];
+
+function playEngine() {
+  if (isPlaying || sections.length === 0) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  
+  if (!worker) {
+    worker = new Worker(URL.createObjectURL(workerBlob));
+    worker.onmessage = () => scheduler();
+  }
+  
+  isPlaying = true;
+  nextNoteTime = audioCtx.currentTime + 0.1;
+  isCountInPhase = global.countIn > 0;
+  cSecIdx = 0; 
+  cBar = isCountInPhase ? -global.countIn : 0; 
+  cTick = 0;
+  uiQueue = [];
+  lastDrawnSec = -1;
+  
+  document.getElementById('btn-play').style.display = 'none';
+  document.getElementById('btn-stop').style.display = 'inline-block';
+  requestWakeLock(); worker.postMessage('start'); requestAnimationFrame(updateUI);
+}
+
+function stopEngine() {
+  isPlaying = false;
+  if (worker) worker.postMessage('stop');
+  document.getElementById('btn-play').style.display = 'inline-block';
+  document.getElementById('btn-stop').style.display = 'none';
+  uiQueue = []; lastDrawnSec = -1; renderLEDs(0); releaseWakeLock();
+}
+
+function scheduler() {
+  while (nextNoteTime < audioCtx.currentTime + 0.1) {
+    let sec = isCountInPhase ? sections[0] : sections[cSecIdx];
+    let globalRef = parseInt(global.noteValue);
+    let tickUnit = Math.max(globalRef, sec.beatUnit); 
+    let ticksPerBeat = tickUnit / sec.beatUnit;
+    let isDownbeat = (cTick % ticksPerBeat === 0);
+    let beatIndex = Math.floor(cTick / ticksPerBeat);
+    
+    let isFirstOfSec = (cBar === 0 && cTick === 0) && !isCountInPhase;
+    let isAccent = false;
+    
+    if (isDownbeat) {
+      if (isCountInPhase) {
+        if (beatIndex === 0) isAccent = true; 
+      } else {
+        if (sec.mode === 'absolute' && beatIndex === 0) isAccent = true;
+        if (sec.mode === 'force' && ((Math.abs(cBar) * sec.beatsPerBar) + beatIndex) % sec.forceLoop === 0) isAccent = true;
+      }
+    }
+    
+    let isUpbeat = !isDownbeat;
+    let freq = 440;
+    
+    if (isCountInPhase) {
+        freq = isAccent ? 880 : 440;
+    } else {
+        if (isFirstOfSec) freq = 1760; 
+        else if (isAccent) freq = 880; 
+        else if (isDownbeat) freq = 440; 
+        else freq = 330; 
+    }
+
+    let shouldPlay = !sec.isMuted;
+    if (!isFirstOfSec && !isAccent && !global.subAccent && !isCountInPhase) shouldPlay = false;
+
+    if (shouldPlay) {
+      let vol = (freq === 440 || freq === 330) ? 0.32 : 0.8; 
+      playOsc(freq, vol, nextNoteTime);
+    }
+
+    uiQueue.push({
+      time: nextNoteTime, secIdx: cSecIdx, bar: cBar, 
+      beatIndex, isFirstOfSec, isAccent, isDownbeat, isUpbeat, isCountInPhase
+    });
+
+    let spb = (60.0 / global.bpm) * (globalRef / tickUnit);
+    nextNoteTime += spb;
+
+    cTick++;
+    let ticksPerBar = sec.beatsPerBar * ticksPerBeat;
+    if (cTick >= ticksPerBar) {
+      cTick = 0; cBar++;
+      
+      if (isCountInPhase && cBar >= 0) {
+          isCountInPhase = false; 
+      } else if (!isCountInPhase && cBar >= sec.bars) {
+        cBar = 0; cSecIdx++;
+        if (cSecIdx >= sections.length) {
+          cSecIdx = 0;
+          if (global.trainer !== 0) {
+             global.bpm += parseInt(global.trainer);
+             document.getElementById('g-bpm').value = global.bpm;
+             saveData();
+          }
+        }
+      }
+    }
+  }
+}
+
+function playOsc(freq, vol, time) {
+  let osc = audioCtx.createOscillator();
+  let gain = audioCtx.createGain();
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(time);
+  osc.stop(time + 0.05);
+}
+
+let lastDrawnSec = -1;
+function updateUI() {
+  if (!isPlaying) return;
+  let currTime = audioCtx.currentTime;
+  let currentEvent = null;
+  while (uiQueue.length > 0 && uiQueue[0].time <= currTime + 0.05) currentEvent = uiQueue.shift();
+
+  if (currentEvent) {
+    let statText = document.getElementById('status-text');
+    if (currentEvent.isCountInPhase) statText.innerHTML = `<span class="status-countin">COUNT-IN: ${Math.abs(currentEvent.bar)}</span>`;
+    else statText.innerText = `Now: ${currentEvent.secIdx + 1} | BARS: ${currentEvent.bar + 1} / ${sections[currentEvent.secIdx].bars}`;
+      
+    let targetSecIdx = currentEvent.isCountInPhase ? 0 : currentEvent.secIdx;
+    
+    if (lastDrawnSec !== targetSecIdx) {
+      renderLEDs(sections[targetSecIdx].beatsPerBar);
+      document.querySelectorAll('.section-card').forEach((el, idx) => {
+        if (idx === targetSecIdx) {
+          el.classList.add('active-card');
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else el.classList.remove('active-card');
+      });
+      lastDrawnSec = targetSecIdx;
+    }
+
+    let leds = document.querySelectorAll('.led');
+    leds.forEach(l => l.className = 'led'); 
+    let bIdx = currentEvent.beatIndex;
+    
+    if (leds[bIdx]) {
+      if (currentEvent.isCountInPhase) leds[bIdx].classList.add('active-first'); 
+      else if (currentEvent.isFirstOfSec) leds[bIdx].classList.add('active-first');
+      else if (currentEvent.isAccent) leds[bIdx].classList.add('active-accent');
+      else if (currentEvent.isDownbeat) leds[bIdx].classList.add('active-sub');
+      else leds[bIdx].classList.add('active-upbeat');
+    }
+  }
+  requestAnimationFrame(updateUI);
+}
+
+function renderLEDs(count) {
+  let html = '';
+  for(let i=0; i<count; i++) html += `<div class="led"></div>`;
+  document.getElementById('led-array').innerHTML = html;
+}
+
+let pickerActiveIndex = -1;
+function initPickerItems() {
+    let htmlNum = '<div class="picker-item"></div>', htmlDen = '<div class="picker-item"></div>';
+    for(let i=1; i<=16; i++) htmlNum += `<div class="picker-item" data-val="${i}">${i}</div>`;
+    [2,4,8,16].forEach(v => htmlDen += `<div class="picker-item" data-val="${v}">${v}</div>`);
+    htmlNum += '<div class="picker-item"></div>'; htmlDen += '<div class="picker-item"></div>';
+    document.getElementById('col-num').innerHTML = htmlNum;
+    document.getElementById('col-den').innerHTML = htmlDen;
+}
+
+function openPicker(idx) {
+    if (isPlaying) stopEngine();
+    pickerActiveIndex = idx;
+    document.getElementById('ts-modal').style.display = 'flex';
+    let sec = sections[idx];
+    document.getElementById('col-num').scrollTop = (sec.beatsPerBar - 1) * 50;
+    document.getElementById('col-den').scrollTop = [2,4,8,16].indexOf(sec.beatUnit) * 50;
+    updatePickerStyle('col-num'); updatePickerStyle('col-den');
+}
+
+function closePicker() {
+    if(pickerActiveIndex === -1) return;
+    document.getElementById('ts-modal').style.display = 'none';
+    let numItem = document.querySelector('#col-num .picker-item.selected');
+    let denItem = document.querySelector('#col-den .picker-item.selected');
+    sections[pickerActiveIndex].beatsPerBar = (numItem && numItem.getAttribute('data-val')) ? parseInt(numItem.getAttribute('data-val')) : sections[pickerActiveIndex].beatsPerBar;
+    sections[pickerActiveIndex].beatUnit = (denItem && denItem.getAttribute('data-val')) ? parseInt(denItem.getAttribute('data-val')) : sections[pickerActiveIndex].beatUnit;
+    pickerActiveIndex = -1; lastDrawnSec = -1;
+    saveData(); renderUI();
+}
+
+function updatePickerStyle(colId) {
+    let col = document.getElementById(colId);
+    let activeIndex = Math.round(col.scrollTop / 50) + 1;
+    col.querySelectorAll('.picker-item').forEach((item, idx) => {
+        if(idx === activeIndex) item.classList.add('selected');
+        else item.classList.remove('selected');
+    });
+}
+
+function renderUI() {
+  let html = '';
+  sections.forEach((sec, idx) => {
+    html += `
+      <div class="section-card" id="card-${idx}">
+        <div class="card-number">${idx + 1}</div>
+        <div class="card-inputs">
+          <label>小節 <input type="number" min="1" value="${sec.bars}" onchange="updateSec(${idx}, 'bars', this.value)" style="width:40px"></label>
+          <button class="ts-btn" onclick="openPicker(${idx})">拍號: ${sec.beatsPerBar} / ${sec.beatUnit}</button>
+          <label>重音 
+            <select onchange="updateSec(${idx}, 'mode', this.value)">
+              <option value="absolute" ${sec.mode==='absolute'?'selected':''}>Absolute</option>
+              <option value="force" ${sec.mode==='force'?'selected':''}>Force</option>
+            </select>
+          </label>
+          ${sec.mode === 'force' ? `
+            <select onchange="updateSec(${idx}, 'forceLoop', this.value)" style="width:55px;">
+              <option value="2" ${sec.forceLoop==2?'selected':''}>2拍</option>
+              <option value="3" ${sec.forceLoop==3?'selected':''}>3拍</option>
+              <option value="4" ${sec.forceLoop==4?'selected':''}>4拍</option>
+            </select>
+          ` : ''}
+        </div>
+        <div class="card-actions">
+          <button id="mute-btn-${idx}" class="mute-btn ${sec.isMuted ? 'is-muted' : ''}" onclick="toggleMute(${idx})">${sec.isMuted ? '🔇' : '🔊'}</button>
+          <button onclick="duplicateSection(${idx})">複製</button>
+          <button onclick="deleteSection(${idx})" style="color:#ff5252">刪除</button>
+        </div>
+      </div>
+    `;
+  });
+  document.getElementById('card-list').innerHTML = html;
+  let remain = 32 - getTotalBars();
+  let addBtn = document.getElementById('btn-add');
+  addBtn.innerText = `+ 新增段落 (剩餘 ${remain} 小節)`;
+  addBtn.disabled = (remain <= 0);
+}
+
+function updateSec(idx, key, val) {
+  if (isPlaying) stopEngine();
+  sections[idx][key] = (key === 'mode') ? val : parseInt(val);
+  enforceLimit(); lastDrawnSec = -1; saveData(); renderUI();
+}
+
+function deleteSection(idx) {
+  if (isPlaying) stopEngine();
+  sections.splice(idx,1); lastDrawnSec = -1; saveData(); renderUI();
+}
+
+document.getElementById('g-bpm').addEventListener('change', e => { global.bpm = parseInt(e.target.value); saveData(); });
+document.getElementById('g-note').addEventListener('change', e => { global.noteValue = parseInt(e.target.value); saveData(); });
+document.getElementById('g-sub').addEventListener('change', e => { global.subAccent = e.target.checked; saveData(); });
+document.getElementById('g-countin').addEventListener('change', e => { global.countIn = parseInt(e.target.value); saveData(); });
+document.getElementById('g-trainer').addEventListener('change', e => { global.trainer = parseInt(e.target.value); saveData(); });
+
+document.getElementById('btn-play').addEventListener('click', playEngine);
+document.getElementById('btn-stop').addEventListener('click', stopEngine);
+document.getElementById('btn-add').addEventListener('click', () => {
+  if (isPlaying) stopEngine();
+  sections.push({ id: 's'+Date.now(), bars: 1, beatsPerBar: 4, beatUnit: 4, isMuted: false, mode: 'absolute', forceLoop: 4 });
+  enforceLimit(); lastDrawnSec = -1; saveData(); renderUI();
+});
+
+initPickerItems(); loadData(); renderUI();
+</script>
+</body>
+</html>
